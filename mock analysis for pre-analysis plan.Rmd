@@ -1,0 +1,159 @@
+---
+title: "final.declaredesign"
+author: "Ruth Holloway"
+date: '2022-05-12'
+output: pdf_document
+---
+
+```{r, include=TRUE}
+#create my fake data
+library(bindata)
+M <-  matrix(c(.5, .2, .2, .5, .5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5,.5, .2, .2, .5), nrow = 1, ncol=8)
+colnames(M) <- c("secede","repress", "settle", "h_oppressed", "f_autonomy", "gdp_ten", "democracy", "failed_state")
+M
+
+fakedat <- rmvbin(403, margprob=c(M))
+
+fakedat <- as.data.frame(fakedat)
+
+library(dplyr)
+
+fakedat <- fakedat %>% 
+  rename(
+    secede = V1,
+    repress = V2,
+    settle = V3,
+    h_oppressed =V4,
+    f_autonomy = V5,
+    gfp_ten = V6,
+    democracy = V7,
+    failed_state = V8
+    )
+#View(fakedat)
+
+install.packages("jsonlite", repos="https://cran.rstudio.com/")
+library("jsonlite")
+
+json_file <- 'https://datahub.io/core/country-list/datapackage.json'
+json_data <- fromJSON(paste(readLines(json_file), collapse=""))
+
+for(i in 1:length(json_data$resources$datahub$type)){
+  if(json_data$resources$datahub$type[i]=='derived/csv'){
+    path_to_file = json_data$resources$path[i]
+    dat <- read.csv(url(path_to_file))
+    print(dat)
+  }
+}
+
+R <- set.seed(123)                    
+R <- sample(1:249, 403, replace=TRUE) 
+fakedat$ccode<-R
+#View(fakedat)
+
+S <- set.seed(123)
+S <- sample(1:249, 249, replace=FALSE)
+dat$ccode<-S
+#View(dat)
+
+Q<-set.seed(1234)
+Q<-sample(0:1, 403, replace=TRUE)
+
+L<-set.seed(1234)
+L<-sample(0:1, 403, replace=TRUE)
+
+M<-set.seed(1234)
+M<-sample(0:1, 403, replace=TRUE)
+
+Y<-set.seed(1234)
+Y<-sample(0:1, 403, replace=TRUE)
+
+mydat <- left_join(fakedat, dat)
+mydat$repress <- ifelse (mydat$secede==1, 0,1)
+mydat<-subset(mydat, select = -c(settle))
+View(mydat)
+```
+
+
+```{r, include=TRUE}
+#create my matches
+library(optmatch)
+fm1 <- fullmatch(secede~h_oppressed+democracy+failed_state, data=mydat)
+summary(fm1)
+
+fm2 <- fullmatch(secede~f_autonomy+democracy+failed_state, data=mydat)
+summary(fm2)
+
+fm3 <- fullmatch(secede~gfp_ten+democracy+failed_state, data=mydat)
+summary(fm3)
+```
+
+```{r, include=TRUE}
+#evaluate my matches
+library(RItools)
+xb1 <- xBalance(secede~h_oppressed+democracy+failed_state,
+  strata = list(raw = NULL),
+  data = mydat,
+  report = c(
+    "std.diffs", "z.scores", "adj.means",
+    "adj.mean.diffs", "chisquare.test", "p.values"
+  )
+)
+xb1$results
+xb1$results["h_oppressed", , ]
+
+xb2 <- xBalance(secede~f_autonomy+democracy+failed_state,
+  strata = list(raw = NULL),
+  data = mydat,
+  report = c(
+    "std.diffs", "z.scores", "adj.means",
+    "adj.mean.diffs", "chisquare.test", "p.values"
+  )
+)
+xb2$results
+xb2$results["f_autonomy", , ]
+
+xb3 <- xBalance(secede~gfp_ten+democracy+failed_state,
+  strata = list(raw = NULL),
+  data = mydat,
+  report = c(
+    "std.diffs", "z.scores", "adj.means",
+    "adj.mean.diffs", "chisquare.test", "p.values"
+  )
+)
+xb3$results
+xb3$results["gfp_ten", , ]
+```
+
+```{r}
+#use DeclareDesign to simulate difference outcomes
+library(DeclareDesign)
+library(MatchIt) #I know we're not supposed to use MatchIt but it's a last resort; my handler isn't working with optmatch :(
+full_match <- 
+  function(data) { 
+    matched <- matchit(D ~ X+U+P,  method="optimal", data = data) 
+    match.data(matched) 
+  }
+
+declaration1 <- 
+  declare_model(N = 403, 
+    U = Q, 
+    X = L,
+    D = M,
+    P = Y,
+    Y_D_0 = 0.2 * X + U,
+    Y_D_1 = Y_D_0 + 0.5)+
+  declare_inquiry(ATE = mean(Y_D_1 - Y_D_0))+
+  declare_step(handler=full_match)+
+  declare_measurement(Y = reveal_outcomes(Y ~ D))+
+  declare_estimator(Y ~ D,
+                    weights = weights,
+                    model = difference_in_means,
+                    label = "adjusted") +
+  declare_estimator(Y ~ D, 
+                    model = difference_in_means, 
+                    label = "unadjusted")
+
+diagnose_design(declaration1)
+```
+
+
