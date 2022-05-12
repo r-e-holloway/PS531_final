@@ -41,7 +41,7 @@ for(i in 1:length(json_data$resources$datahub$type)){
   if(json_data$resources$datahub$type[i]=='derived/csv'){
     path_to_file = json_data$resources$path[i]
     dat <- read.csv(url(path_to_file))
-    print(dat)
+    #print(dat)
   }
 }
 
@@ -70,7 +70,7 @@ Y<-sample(0:1, 403, replace=TRUE)
 mydat <- left_join(fakedat, dat)
 mydat$repress <- ifelse (mydat$secede==1, 0,1)
 mydat<-subset(mydat, select = -c(settle))
-View(mydat)
+#View(mydat)
 ```
 
 
